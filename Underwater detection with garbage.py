@@ -3,7 +3,7 @@ import numpy as np
 from tensorflow.keras.models import load_model
 
 # Load the trained model
-model = load_model("D:/model/keras_model.h5")
+model = load_model("/keras_model.h5")
 
 # Define the classes
 classes = ['dolphin', 'fish', 'seahorse', 'shark', 'garbage']
