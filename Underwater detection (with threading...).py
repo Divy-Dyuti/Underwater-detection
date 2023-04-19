@@ -1,86 +1,61 @@
 import cv2
-import numpy as np
-from tensorflow.keras.models import load_model
 import threading
+import numpy as np
+from keras.models import load_model
 
-# Load the trained model
+# Load pre-trained model
 model = load_model("D:/model/keras_model.h5")
 
-# Define the classes
+# Define classes
 classes = ['dolphin', 'fish', 'seahorse', 'shark', 'human', 'garbage']
 
-# Set up the webcam
+# Define colors for bounding boxes
+colors = [(0, 255, 0), (0, 255, 0), (0, 255, 0), (0, 255, 0), (0, 255, 0), (0, 0, 255)]
+
+# Initialize webcam capture
 cap = cv2.VideoCapture(0)
 
-# Initialize the bounding box list
-bbox_list = []
-
-# Define the thread function
-def thread_function():
-    global bbox_list
+def detect_objects():
     while True:
-        # Wait for a bounding box to be available
-        while len(bbox_list) == 0:
-            pass
+        # Read frame from webcam
+        ret, frame = cap.read()
 
-        # Get the latest bounding box
-        bbox = bbox_list[-1]
+        # Preprocess frame for prediction
+        img = cv2.resize(frame, (224, 224))
+        img = np.array(img, dtype='float32')
+        img = np.expand_dims(img, axis=0)
 
-        # Draw a bounding box around the object
-        x, y, w, h, class_name = bbox
-        if class_name == 'garbage':
-            color = (0, 0, 255)  # red
-        else:
-            color = (0, 255, 0)  # green
-        cv2.rectangle(frame, (x, y), (x+w, y+h), color, thickness=2)
+        # Make prediction
+        pred = model.predict(img)
 
-        # Display the class name
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(frame, class_name, (x, y-10), font, 1, color, 2)
+        # Get class with highest probability
+        class_index = np.argmax(pred[0])
+        label = classes[class_index]
+        color = colors[class_index]
 
-    # Create a new thread
-thread = threading.Thread(target=thread_function)
+        # Draw bounding box and label on frame
+        height, width, channels = frame.shape
+        x1 = int(pred[0][1] * width)
+        y1 = int(pred[0][0] * height)
+        x2 = int(pred[0][3] * width)
+        y2 = int(pred[0][2] * height)
+        cv2.rectangle(frame,(x1,y1),(x2,y2),color,2)
+        cv2.putText(frame,label,(x1,y1),cv2.FONT_HERSHEY_SIMPLEX,1,color,2)
 
-# Start the thread
-thread.start()
+        # Show frame with bounding box and label
+        cv2.imshow('Object Detection',frame)
 
-while True:
-    # Capture a frame from the webcam
-    ret, frame = cap.read()
+        # Break loop on 'q' key press
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
-    # Resize the frame to the size expected by the model
-    resized_frame = cv2.resize(frame, (224, 224))
+# Start object detection thread
+t = threading.Thread(target=detect_objects)
+t.start()
 
-    # Normalize the pixel values to be between 0 and 1
-    normalized_frame = resized_frame / 255.0
+# Wait for thread to finish
+t.join()
 
-    # Reshape the frame to match the input shape of the model
-    input_frame = np.expand_dims(normalized_frame, axis=0)
-
-    # Make a prediction with the model
-    predictions = model.predict(input_frame)
-
-    # Get the indices of the classes with high probability
-    class_indices = np.where(predictions[0] > 0.5)[0]
-
-    # Loop over the detected classes and update the bounding box list
-    for class_index in class_indices:
-        class_name = classes[class_index]
-
-        # Update the bounding box with the coordinates of the detected object
-        mask = predictions[0] == predictions[0][class_index]
-        contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if len(contours) > 0:
-            x, y, w, h = cv2.boundingRect(contours[0])
-            bbox_list.append((x, y, w, h, class_name))
-
-    # Display the frame
-    cv2.imshow('Object Detection', frame)
-
-    # Exit the loop if the user presses 'q'
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
-# Release the webcam and close the window
+# Release webcam capture and destroy all windows
 cap.release()
 cv2.destroyAllWindows()
